@@ -1,0 +1,80 @@
+// BLE Server Code (HW7 Server)
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
+
+#define SERVICE_UUID        "12345678-1234-1234-1234-123456789abc"
+#define CHARACTERISTIC_UUID "abcd1234-ab12-cd34-ef56-abcdef123456"
+
+void setup() {
+  Serial.begin(115200);
+  BLEDevice::init("ESP32-BLE-Server");
+
+  BLEServer* pServer = BLEDevice::createServer();
+  BLEService* pService = pServer->createService(SERVICE_UUID);
+  
+  BLECharacteristic* pCharacteristic = pService->createCharacteristic(
+    CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_READ | BLECharacteristic::PROPERTY_NOTIFY
+  );
+
+  pCharacteristic->setValue("Hello from server");
+  pService->start();
+
+  BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
+  pAdvertising->addServiceUUID(SERVICE_UUID);
+  pAdvertising->setScanResponse(true);
+  pAdvertising->setMinPreferred(0x06);  // optional
+  pAdvertising->setMinPreferred(0x12);  // optional
+  BLEDevice::startAdvertising();
+
+  Serial.println("BLE Server advertising...");
+}
+
+void loop() {
+  delay(1000);
+}
+
+// BLE Client Code (HW7 Client)
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEScan.h>
+#include <BLEAdvertisedDevice.h>
+
+#define SERVER_NAME "ESP32-BLE-Server"
+int txPower = -57;     // RSSI at 1 meter (실험 환경에 맞게 조정)
+float n = 2.0;          // Path-loss exponent (실내: 2~4)
+
+float estimateDistance(int rssi) {
+  return pow(10.0, ((float)(txPower - rssi)) / (10.0 * n));
+}
+
+class MyAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks {
+  void onResult(BLEAdvertisedDevice advertisedDevice) {
+    if (advertisedDevice.haveName() && advertisedDevice.getName() == SERVER_NAME) {
+      int rssi = advertisedDevice.getRSSI();
+      float distance = estimateDistance(rssi);
+      Serial.print("RSSI: ");
+      Serial.print(rssi);
+      Serial.print(" dBm → Estimated Distance: ");
+      Serial.print(distance, 2);
+      Serial.println(" meters");
+    }
+  }
+};
+
+void setup() {
+  Serial.begin(115200);
+  BLEDevice::init("");
+
+  BLEScan* pScan = BLEDevice::getScan();
+  pScan->setAdvertisedDeviceCallbacks(new MyAdvertisedDeviceCallbacks());
+  pScan->setActiveScan(true);
+  Serial.println("Scanning for BLE server...");
+}
+
+void loop() {
+  BLEScan* pScan = BLEDevice::getScan();
+  pScan->start(5, false);  // Scan for 5 seconds
+  delay(1000);
+}
